@@ -25,6 +25,8 @@
   </script>
   <!-- Chart.js para Gráficas -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Polyfill de WebUSB a WebSerial para compatibilidad con Android OTG -->
+  <script src="https://unpkg.com/web-serial-polyfill/dist/build/serial.js"></script>
 </head>
 <body class="bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-100 min-h-screen p-4 md:p-8 transition-colors duration-300 font-sans">
   <div class="max-w-6xl mx-auto space-y-6">
@@ -194,6 +196,8 @@
   </div>
 
   <script>
+    let serialAPI = null;
+    let isAndroidWebUSB = false;
     let availablePorts = [];
     let port = null;
     let reader = null;
@@ -210,17 +214,17 @@
 
     window.addEventListener('DOMContentLoaded', () => {
       initTheme();
-      checkSerialSupport();
+      initSerialAPI();
       refreshPortsList();
       toggleWriteFields(); 
       initChart();
 
-      if ("serial" in navigator) {
-        navigator.serial.addEventListener('connect', () => {
+      if (serialAPI && serialAPI.addEventListener) {
+        serialAPI.addEventListener('connect', () => {
           log("🟢 Hardware USB detectado.");
           refreshPortsList();
         });
-        navigator.serial.addEventListener('disconnect', () => {
+        serialAPI.addEventListener('disconnect', () => {
           log("🔴 Hardware USB desconectado.");
           stopAutoPolling();
           refreshPortsList();
@@ -228,10 +232,23 @@
       }
     });
 
-    function checkSerialSupport() {
-      if (!("serial" in navigator)) {
-        log("⚠️ ATENCIÓN: La Web Serial API no está disponible en este entorno.");
-        log("💡 Abre este archivo en Chrome o Edge mediante HTTPS o http://localhost");
+    // --- Autodetección de Entorno y Control de API Serial (PC / Android) ---
+    function initSerialAPI() {
+      const isAndroidDevice = /Android/i.test(navigator.userAgent);
+
+      if (isAndroidDevice && "usb" in navigator && window.serialPolyfill) {
+        // En Android forzamos el Polyfill WebUSB para garantizar la conexión OTG
+        serialAPI = new serialPolyfill.Serial();
+        isAndroidWebUSB = true;
+        log("📱 Dispositivo Android detectado. Activando WebUSB OTG Polyfill.");
+      } else if ("serial" in navigator) {
+        // En Computadoras / Laptops utilizamos WebSerial Nativo
+        serialAPI = navigator.serial;
+        isAndroidWebUSB = false;
+        log("💻 Entorno Nativo Web Serial detectado (PC / Laptop).");
+      } else {
+        log("⚠️ ATENCIÓN: La Web Serial/USB API no está disponible en este navegador.");
+        log("💡 Abre esta página en Google Chrome utilizando el protocolo HTTPS.");
       }
     }
 
@@ -506,27 +523,46 @@
     }
 
     async function refreshPortsList() {
-      if (!("serial" in navigator)) return;
+      if (!serialAPI) return;
       try {
-        availablePorts = await navigator.serial.getPorts();
+        availablePorts = await serialAPI.getPorts();
         const portSelect = document.getElementById('portSelect');
         portSelect.innerHTML = '';
         if (availablePorts.length === 0) {
           portSelect.innerHTML = `<option value="">-- Sin puertos. Haz clic en "Añadir" --</option>`;
         } else {
           availablePorts.forEach((p, index) => {
-            portSelect.innerHTML += `<option value="${index}">Puerto Serial USB ${index + 1}</option>`;
+            const info = p.getInfo ? p.getInfo() : {};
+            const vendorStr = info.usbVendorId ? ` [VID: 0x${info.usbVendorId.toString(16)}]` : '';
+            portSelect.innerHTML += `<option value="${index}">Puerto Serial USB ${index + 1}${vendorStr}</option>`;
           });
         }
       } catch (err) { log("Error al listar puertos: " + err.message); }
     }
 
     async function requestNewPort() {
-      if (!("serial" in navigator)) return;
+      if (!serialAPI) return alert("Tu navegador o dispositivo no soporta comunicación Serial USB.");
       try {
-        await navigator.serial.requestPort();
+        // Identificadores de fabricantes comunes (FTDI, Silicon Labs CP210x, CH340, Prolific, Arduino, Pico, ST)
+        const filters = [
+          { usbVendorId: 0x0403 },
+          { usbVendorId: 0x10c4 },
+          { usbVendorId: 0x1a86 },
+          { usbVendorId: 0x067b },
+          { usbVendorId: 0x2341 },
+          { usbVendorId: 0x2e8a },
+          { usbVendorId: 0x0483 }
+        ];
+
+        if (isAndroidWebUSB) {
+          // En Android pasamos los filtros explícitos para forzar la detección del puerto USB
+          await serialAPI.requestPort({ filters: filters });
+        } else {
+          await serialAPI.requestPort();
+        }
+
         await refreshPortsList();
-      } catch (err) { log("Selección de puerto cancelada."); }
+      } catch (err) { log("Selección de puerto cancelada: " + err.message); }
     }
 
     function calculateCRC16(buffer) {
