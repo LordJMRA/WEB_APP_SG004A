@@ -138,12 +138,12 @@
         <div class="md:col-span-1">
           <label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Función Modbus Lectura/Escritura</label>
           <select id="functionCode" onchange="toggleWriteFields()" class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-blue-500">
-            <option value="3">03 (0x03) - Read Holding Registers</option>
-            <option value="4">04 (0x04) - Read Input Registers</option>
-            <option value="100">100 (0x64) - Read uint16_t</option>
-            <option value="101">101 (0x65) - Write uint16_t</option>
-            <option value="102" selected>102 (0x66) - Read Float (Valor /100)</option>
-            <option value="103">103 (0x67) - Write Float</option>
+            <option value="3">Leer Registros de Retención (Holding)</option>
+            <option value="4">Leer Registros de Entrada (Input)</option>
+            <option value="100">Leer Valor Entero a 16 bits</option>
+            <option value="101">Escribir Valor Entero a 16 bits</option>
+            <option value="102" selected>Leer Valor Decimal (Float)</option>
+            <option value="103">Escribir Valor Decimal (Float)</option>
           </select>
         </div>
 
